@@ -35,7 +35,6 @@ fn strip(filename: &str, string_name: &str) -> Result<()> {
     let location = find_location_to_strip(&file_content, string_name)?;
     match location {
         Some(location) => {
-            println!("Found an element to strip at {:?}", location);
 
             let file = File::create(filename)?;
             let mut file = LineWriter::new(file);
@@ -47,9 +46,10 @@ fn strip(filename: &str, string_name: &str) -> Result<()> {
                 }
                 line_number = line_number + 1;
             }
+            println!("👍 Stripped {} from {}", string_name, filename);
         }
         None => {
-            println!("Didn't find an element to strip");
+            println!("🤷 Didn't find {} in {}", string_name, filename);
         }
     }
     Ok(())
