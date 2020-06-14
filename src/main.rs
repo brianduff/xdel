@@ -7,8 +7,13 @@ use std::str;
 use xml::attribute::OwnedAttribute;
 use xml::common::Position;
 use xml::reader::{EventReader, XmlEvent};
+use std::path::Path;
 
 use std::io::prelude::*;
+
+mod index;
+
+use crate::index::index;
 
 #[derive(Debug)]
 struct ElementLocation {
@@ -102,10 +107,26 @@ fn find_location_to_strip(
 fn main() -> Result<()> {
     let args: Vec<String> = env::args().collect();
 
+    let index = index(&args[1])?;
+    index.write_index(Path::new("/tmp/idex"))?;
+    let files = index.get_files("quiet_mode_entered_by_swipe");
+    match files {
+        Some(files) => {
+            println!("Locations defining 'quiet_mode_entered_by_swipe':");
+            for file in files {
+                println!("  {}", file);
+            }        
+        },
+        None => {
+            println!("Key not found: 'quiet_mode_entered_by_swipe'");
+        }
+    }
+
+
     match args.len() {
         3 => {
-            let filename = &args[1];
-            let string_name = &args[2];
+            let filename = &args[2];
+            let string_name = &args[3];
 
             strip(&filename, &string_name)
         }

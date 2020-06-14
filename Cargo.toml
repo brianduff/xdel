@@ -9,5 +9,8 @@ edition = "2018"
 [dependencies]
 anyhow = "*"
 xml-rs = "*"
-
+rayon = "*"
+glob = "*"
+multimap = "*"
+bincode = "*"
 
