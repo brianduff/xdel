@@ -1,135 +1,142 @@
-use anyhow::{anyhow, Result};
-use std::env;
-use std::fs;
-use std::fs::File;
-use std::io::LineWriter;
+use anyhow::{anyhow, Error, Result};
 use std::str;
-use xml::attribute::OwnedAttribute;
-use xml::common::Position;
-use xml::reader::{EventReader, XmlEvent};
+
+use std::path::PathBuf;
+use std::str::FromStr;
+use structopt::StructOpt;
 use std::path::Path;
 
-use std::io::prelude::*;
-
 mod index;
+mod xeditor;
 
-use crate::index::index;
+#[derive(Debug, StructOpt)]
+/// Finds and manipluates string resources
+#[structopt(name = "aster", bin_name = "aster", no_version)]
+struct Opt {
+    #[structopt(short)]
+    java_root: PathBuf,
+
+    #[structopt(short)]
+    res_root: PathBuf,
+
+    #[structopt(long)]
+    cache_dir: Option<PathBuf>,
+
+    #[structopt(subcommand)]
+    subcommand: Subcommand,
+}
+
+#[derive(Debug, StructOpt)]
+enum Subcommand {
+    Counts {},
+    Index {},
+    LsUnused {
+        #[structopt(short)]
+        show_location: bool,
+    },
+    RmUnused {
+        #[structopt(short)]
+        prefix: Option<String>,
+    },
+}
+
+impl Opt {
+    pub fn parse() -> Result<Opt> {
+        let m = Opt::clap().get_matches();
+        Ok(Opt::from_clap(&m))
+    }
+}
 
 #[derive(Debug)]
-struct ElementLocation {
-    start_line: u64,
-    end_line: u64,
+enum Kind {
+    Defined,
+    Used,
+    Unused,
 }
 
-fn get_name_attr(attributes: &Vec<OwnedAttribute>) -> Option<String> {
-    for attr in attributes {
-        if attr.name.local_name.eq("name") {
-            return Some(attr.value.to_owned());
+impl FromStr for Kind {
+    type Err = Error;
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        match value {
+            "defined" => Ok(Kind::Defined),
+            "used" => Ok(Kind::Used),
+            "unused" => Ok(Kind::Unused),
+            _ => Err(anyhow!("Unrecognized value")),
         }
     }
-
-    None
 }
 
-fn strip(filename: &str, string_name: &str) -> Result<()> {
-    // We're potentially going to have to read the file twice: once for the xml
-    // parser, and again for the buffer to write out with an element trimmed out.
-    // Start off by reading it all into memory.
-    let file_content = fs::read_to_string(filename)?;
 
-    let location = find_location_to_strip(&file_content, string_name)?;
-    match location {
-        Some(location) => {
+fn filtered_unused_strings(index: &index::ResourceIndex) -> Vec<&String> {
+    let mut unused_strings: Vec<&String> = index
+        .unused_strings()
+        .iter()
+        .cloned()
+        .filter(|s| !s.contains("emoji") && !s.contains("f1gender") && !s.contains("m2gender"))
+        .collect();
 
-            let file = File::create(filename)?;
-            let mut file = LineWriter::new(file);
-            let mut line_number = 0;
-            for line in file_content.lines() {
-                if line_number < location.start_line || line_number > location.end_line {
-                    file.write_all(line.as_bytes())?;
-                    file.write_all("\n".as_bytes())?;
-                }
-                line_number = line_number + 1;
-            }
-            println!("👍 Stripped {} from {}", string_name, filename);
-        }
-        None => {
-            println!("🤷 Didn't find {} in {}", string_name, filename);
-        }
-    }
-    Ok(())
-}
+    unused_strings.sort();
 
-fn find_location_to_strip(
-    file_content: &String,
-    string_name: &str,
-) -> Result<Option<ElementLocation>> {
-    let mut parser = EventReader::new(file_content.as_bytes());
-    let mut in_skipped_element = false;
-    let mut start_line: u64 = 0;
-    loop {
-        let e = parser.next();
-        match e {
-            Ok(XmlEvent::StartElement {
-                name, attributes, ..
-            }) => {
-                let pos = parser.position();
-                if name.local_name.eq("string") {
-                    if let Some(name) = get_name_attr(&attributes) {
-                        if name.eq(string_name) {
-                            in_skipped_element = true;
-                            start_line = pos.row;
-                        }
-                    }
-                }
-            }
-            Ok(XmlEvent::EndElement { name, .. }) => {
-                let pos = parser.position();
-                if name.local_name.eq("string") && in_skipped_element {
-                    let end_line = pos.row;
-                    return Ok(Some(ElementLocation {
-                        start_line,
-                        end_line,
-                    }));
-                }
-                in_skipped_element = false;
-            }
-            Ok(XmlEvent::EndDocument) => return Ok(None),
-            Err(e) => return Err(anyhow::Error::new(e)),
-            _ => {}
-        }
-    }
+    unused_strings
 }
 
 /// A simple program that reads an strings.xml file and strips
 /// elements matching the given name out without disrupting the rest
 /// of the file.
 fn main() -> Result<()> {
-    let args: Vec<String> = env::args().collect();
+    let opt = Opt::parse()?;
 
-    let index = index(&args[1])?;
-    index.write_index(Path::new("/tmp/idex"))?;
-    let files = index.get_files("quiet_mode_entered_by_swipe");
-    match files {
-        Some(files) => {
-            println!("Locations defining 'quiet_mode_entered_by_swipe':");
-            for file in files {
-                println!("  {}", file);
-            }        
-        },
-        None => {
-            println!("Key not found: 'quiet_mode_entered_by_swipe'");
+    let indexer = index::Indexer::new(opt.java_root, opt.res_root, opt.cache_dir)?;
+
+    match opt.subcommand {
+        Subcommand::Index {} => {
+            let index = indexer.index()?;
+            indexer.serialize(&index)?;
+        }
+        Subcommand::Counts { .. } => {
+            let index = indexer.deserialize()?;
+            println!("{} defined strings", index.defined_strings().len());
+            println!("{} used strings", index.used_strings().len());
+            println!("{} unused strings", filtered_unused_strings(&index).len());
+        }
+        Subcommand::LsUnused { show_location } => {
+            let index = indexer.deserialize()?;
+
+            let files_for_definition = index.files_for_definition();
+
+            for unused in filtered_unused_strings(&index) {
+                println!("{}", unused);
+                if show_location {
+                    for loc in files_for_definition.get_vec(unused).unwrap() {
+                        println!("  {}", loc);
+                    }
+                }
+            }
+        }
+        Subcommand::RmUnused { prefix } => {
+            let index = indexer.deserialize()?;
+            let files_for_definition = index.files_for_definition();
+
+            let prefix = match prefix {
+                Some(prefix) => prefix,
+                None => "".to_string(),
+            };
+
+            for unused in filtered_unused_strings(&index) {
+                if unused.starts_with(&prefix) {
+                    let mut matcher =
+                        xeditor::ElementMatcher::for_local_name("string");
+                    matcher.attr("name", unused);
+
+
+                    for loc in files_for_definition.get_vec(unused).unwrap() {
+                        xeditor::remove_element(Path::new(loc), &matcher)?;
+                    }
+                }
+            }
         }
     }
 
+    return Ok(());
 
-    match args.len() {
-        3 => {
-            let filename = &args[2];
-            let string_name = &args[3];
-
-            strip(&filename, &string_name)
-        }
-        _ => Err(anyhow!("Insufficient args given")),
-    }
 }
