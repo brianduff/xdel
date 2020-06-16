@@ -124,7 +124,7 @@ impl Indexer {
                 Ok(XmlEvent::StartElement {
                     name, attributes, ..
                 }) => {
-                    let pos = parser.position();
+//                    let pos = parser.position();
                     for attr in attributes {
                         if attr.value.contains("@string") {
                             if let Some(captures) = string_id_usage_pattern.captures(&attr.value) {
@@ -269,7 +269,6 @@ impl Indexer {
     }
 
     pub fn deserialize(&self) -> Result<ResourceIndex> {
-        let now = Instant::now();
         let cache_file = self.cache_dir.join("res_cache.bin");
         let file = File::open(cache_file)?;
         let file = BufReader::new(&file);
