@@ -22,3 +22,6 @@ bincode = "*"
 serde = { version = "*", features = ["derive"] }
 deflate = "*"
 
+[dev-dependencies]
+tempdir = "*"
+
