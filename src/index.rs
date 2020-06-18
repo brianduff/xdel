@@ -1,9 +1,10 @@
 use anyhow::Result;
 use cachedir::CacheDirConfig;
-use grep_matcher::Matcher;
-use grep_regex::RegexMatcher;
-use grep_searcher::sinks::UTF8;
-use grep_searcher::Searcher;
+extern crate grep;
+use grep::matcher::Matcher;
+use grep::regex::RegexMatcher;
+use grep::searcher::sinks::UTF8;
+use grep::searcher::Searcher;
 use ignore::overrides::OverrideBuilder;
 use ignore::{WalkBuilder, WalkState};
 use multimap::MultiMap;
