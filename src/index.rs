@@ -12,6 +12,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::fs::File;
 use std::io::BufReader;
+use std::io::BufWriter;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::mpsc;
@@ -282,6 +283,7 @@ impl Indexer {
 
         let cache_file = self.cache_dir.join("res_cache.bin");
         let file = File::create(cache_file)?;
+        let file = BufWriter::new(file);
         bincode::serialize_into(file, &index)?;
 
         println!("Saved index in {}s", now.elapsed().as_secs());
@@ -331,9 +333,7 @@ impl Indexer {
 
         source_files.append(&mut xml_files);
 
-        let now = Instant::now();
         let index = ResourceIndex::new(source_files);
-        println!("Inverted index in {}s", now.elapsed().as_secs());
 
         Ok(index)
     }
