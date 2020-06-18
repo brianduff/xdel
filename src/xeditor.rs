@@ -18,7 +18,7 @@ struct ElementLocation {
     end_line: u64,
 }
 
-fn find_location_to_strip(file_content: &String, matcher: &ElementMatcher) -> Result<Option<ElementLocation>> {
+fn find_location_to_strip(file_content: &str, matcher: &ElementMatcher) -> Result<Option<ElementLocation>> {
   let mut parser = EventReader::new(file_content.as_bytes());
   let mut in_skipped_element = false;
   let mut start_line: u64 = 0;
@@ -30,7 +30,7 @@ fn find_location_to_strip(file_content: &String, matcher: &ElementMatcher) -> Re
           Ok(XmlEvent::StartElement {
               name, attributes, ..
           }) => {
-              depth = depth + 1;
+              depth += 1;
               let pos = parser.position();
               if matcher.matches(&name, &attributes) {
                 in_skipped_element = true;
@@ -48,7 +48,7 @@ fn find_location_to_strip(file_content: &String, matcher: &ElementMatcher) -> Re
                   }));
               }
               in_skipped_element = false;
-              depth = depth - 1;
+              depth -= 1;
           }
           Ok(XmlEvent::EndDocument) => return Ok(None),
           Err(e) => return Err(anyhow::Error::new(e)),
@@ -72,9 +72,9 @@ pub fn remove_element(path: &Path, matcher: &ElementMatcher) -> Result<bool> {
             for line in file_content.lines() {
                 if line_number < location.start_line || line_number > location.end_line {
                     file.write_all(line.as_bytes())?;
-                    file.write_all("\n".as_bytes())?;
+                    file.write_all(b"\n")?;
                 }
-                line_number = line_number + 1;
+                line_number -= 1;
             }
             Ok(true)
         }
@@ -101,7 +101,7 @@ impl ElementMatcher {
     self
   }
 
-  fn matches(&self, name: &OwnedName, attrs: &Vec<OwnedAttribute>) -> bool {
+  fn matches(&self, name: &OwnedName, attrs: &[OwnedAttribute]) -> bool {
     if !self.local_name.eq(&name.local_name) {
       return false;
     }

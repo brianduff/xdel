@@ -221,7 +221,7 @@ impl Indexer {
         let walker = builder.build_parallel();
         walker.run(move || {
             let tx = tx.clone();
-            return Box::new(move |result| {
+            Box::new(move |result| {
                 let result = result.unwrap();
                 let path = result.path();
                 if path.is_file() {
@@ -234,7 +234,7 @@ impl Indexer {
                     }
                 }
                 WalkState::Continue
-            });
+            })
         });
 
         let results = rx2.recv().unwrap();
@@ -264,13 +264,13 @@ impl Indexer {
         let walker = builder.build_parallel();
         walker.run(move || {
             let tx = tx.clone();
-            return Box::new(move |result| {
+            Box::new(move |result| {
                 let index = Indexer::index_source_file(&result.unwrap().path());
                 if let Ok(index) = index {
                     tx.send(index).unwrap();
                 }
                 WalkState::Continue
-            });
+            })
         });
 
         let results = rx2.recv().unwrap();
