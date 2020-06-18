@@ -315,7 +315,7 @@ impl Indexer {
                 self.index_xml_files(&self.manifest_root, "AndroidManifest.xml")?;
             println!(
                 "Indexed {} AndroidManifest.xml files in {}s",
-                xml_files.len(),
+                manifest_files.len(),
                 now.elapsed().as_secs()
             );
             xml_files.append(&mut manifest_files);
