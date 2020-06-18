@@ -1,10 +1,10 @@
 use anyhow::{anyhow, Error, Result};
 use std::str;
 
+use std::path::Path;
 use std::path::PathBuf;
 use std::str::FromStr;
 use structopt::StructOpt;
-use std::path::Path;
 
 mod index;
 mod xeditor;
@@ -18,6 +18,9 @@ struct Opt {
 
     #[structopt(short)]
     res_root: PathBuf,
+
+    #[structopt(short)]
+    manifest_root: Option<PathBuf>,
 
     #[structopt(long)]
     cache_dir: Option<PathBuf>,
@@ -66,7 +69,6 @@ impl FromStr for Kind {
     }
 }
 
-
 fn filtered_unused_strings(index: &index::ResourceIndex) -> Vec<&String> {
     let mut unused_strings: Vec<&String> = index
         .unused_strings()
@@ -86,7 +88,12 @@ fn filtered_unused_strings(index: &index::ResourceIndex) -> Vec<&String> {
 fn main() -> Result<()> {
     let opt = Opt::parse()?;
 
-    let indexer = index::Indexer::new(opt.java_root, opt.res_root, opt.cache_dir)?;
+    let indexer = index::Indexer::new(
+        opt.java_root,
+        opt.res_root,
+        opt.manifest_root,
+        opt.cache_dir,
+    )?;
 
     match opt.subcommand {
         Subcommand::Index {} => {
@@ -124,10 +131,8 @@ fn main() -> Result<()> {
 
             for unused in filtered_unused_strings(&index) {
                 if unused.starts_with(&prefix) {
-                    let mut matcher =
-                        xeditor::ElementMatcher::for_local_name("string");
+                    let mut matcher = xeditor::ElementMatcher::for_local_name("string");
                     matcher.attr("name", unused);
-
 
                     for loc in files_for_definition.get_vec(unused).unwrap() {
                         xeditor::remove_element(Path::new(loc), &matcher)?;
@@ -138,5 +143,4 @@ fn main() -> Result<()> {
     }
 
     return Ok(());
-
 }

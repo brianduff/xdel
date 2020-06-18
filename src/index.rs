@@ -23,6 +23,7 @@ use xml::reader::{EventReader, XmlEvent};
 pub struct Indexer {
     java_root: PathBuf,
     res_root: PathBuf,
+    manifest_root: PathBuf,
     cache_dir: PathBuf,
 }
 
@@ -97,6 +98,7 @@ impl Indexer {
     pub fn new(
         java_root: PathBuf,
         res_root: PathBuf,
+        manifest_root: Option<PathBuf>,
         cache_dir: Option<PathBuf>,
     ) -> Result<Indexer> {
         let cache_dir = match cache_dir {
@@ -104,9 +106,16 @@ impl Indexer {
             None => CacheDirConfig::new("aster").get_cache_dir()?.into(),
         };
 
+        // Default the manifest root to the res
+        let manifest_root = match manifest_root {
+            Some(manifest_root) => manifest_root,
+            None => res_root.clone(),
+        };
+
         Ok(Indexer {
             java_root,
             res_root,
+            manifest_root,
             cache_dir,
         })
     }
@@ -188,10 +197,10 @@ impl Indexer {
         })
     }
 
-    fn index_xml_files(&self) -> Result<Vec<ResourceFile>> {
-        let mut builder = WalkBuilder::new(&self.res_root);
-        let mut overrides = OverrideBuilder::new(&self.res_root);
-        overrides.add("*.xml")?;
+    fn index_xml_files(&self, root: &PathBuf, pattern: &str) -> Result<Vec<ResourceFile>> {
+        let mut builder = WalkBuilder::new(&root);
+        let mut overrides = OverrideBuilder::new(&root);
+        overrides.add(&pattern)?;
         builder.threads(36);
         builder.overrides(overrides.build()?);
 
@@ -211,9 +220,16 @@ impl Indexer {
         walker.run(move || {
             let tx = tx.clone();
             return Box::new(move |result| {
-                let index = Indexer::index_xml_file(&result.unwrap().path());
-                if let Ok(index) = index {
-                    tx.send(index).unwrap();
+                let result = result.unwrap();
+                let path = result.path();
+                if path.is_file() {
+                    let index = Indexer::index_xml_file(&path);
+                    match index {
+                        Ok(index) => tx.send(index).unwrap(),
+                        Err(e) => {
+                            eprintln!("Warning: Failed to parse xml file :{:?}", e);
+                        }
+                    }
                 }
                 WalkState::Continue
             });
@@ -285,12 +301,25 @@ impl Indexer {
         println!("Indexing resources...");
 
         let now = Instant::now();
-        let mut xml_files = self.index_xml_files()?;
+        let mut xml_files = self.index_xml_files(&self.res_root, "*.xml")?;
         println!(
             "Indexed {} xml files in {}s",
             xml_files.len(),
             now.elapsed().as_secs()
         );
+
+        // Process AndroidManifest.xml files if the res root != the manifest root.
+        if !&self.manifest_root.eq(&self.res_root) {
+            let now = Instant::now();
+            let mut manifest_files =
+                self.index_xml_files(&self.manifest_root, "AndroidManifest.xml")?;
+            println!(
+                "Indexed {} AndroidManifest.xml files in {}s",
+                xml_files.len(),
+                now.elapsed().as_secs()
+            );
+            xml_files.append(&mut manifest_files);
+        }
 
         let now = Instant::now();
         let mut source_files = self.index_source_files()?;
@@ -316,17 +345,28 @@ mod tests {
     use std::io::Write;
     use tempdir::TempDir;
 
+    fn write_test_file(temp_dir: &TempDir, filename: &str, content: &str) -> Result<PathBuf> {
+        let file = temp_dir.path().join(&filename);
+        let parent = file.parent().unwrap();
+
+        std::fs::create_dir_all(parent)?;
+
+        File::create(&file)?.write_all(content.as_bytes())?;
+
+        Ok(file)
+    }
+
     #[test]
     fn test_index_java_with_multiple_refs_single_line() -> Result<()> {
-        let tmp_dir = TempDir::new("index_java")?;
-        let file = tmp_dir.path().join("Test.java");
-        File::create(&file)?.write_all(
+        let tmp_dir = TempDir::new("index")?;
+        let file = write_test_file(
+            &tmp_dir,
+            "Test.java",
             r"
             class Cool {
                 int values = [ R.string.foo, R.string.bar ];
             }
-        "
-            .as_bytes(),
+        ",
         )?;
 
         let result = Indexer::index_source_file(&file)?;
@@ -334,6 +374,39 @@ mod tests {
         assert_eq!(result.string_usages.len(), 2);
         assert!(result.string_usages.contains(&"foo".to_string()));
         assert!(result.string_usages.contains(&"bar".to_string()));
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_index_manifest_files() -> Result<()> {
+        let tmp_dir = TempDir::new("index")?;
+        let manifest_dir = tmp_dir.path().join("manifest");
+        write_test_file(
+            &tmp_dir,
+            "manifest/AndroidManifest.xml",
+            r#"<manifest><application label="@string/some_app"></application></manifest>"#,
+        )?;
+
+        let res_dir = tmp_dir.path().join("res");
+        write_test_file(
+            &tmp_dir,
+            "res/strings.xml",
+            r#"<resources><string name="some_app" value="My App" /></resources>"#,
+        )?;
+
+        let src_dir = tmp_dir.path().join("src");
+        std::fs::create_dir_all(&src_dir)?;
+        let indexer = Indexer::new(src_dir, res_dir, Some(manifest_dir), None)?;
+
+        let index = indexer.index()?;
+
+        assert_eq!(
+            index.defined_strings().contains(&"some_app".to_string()),
+            true
+        );
+        assert_eq!(index.used_strings().contains(&"some_app".to_string()), true);
+        assert_eq!(index.unused_strings().is_empty(), true);
 
         Ok(())
     }
