@@ -11,7 +11,7 @@ mod xeditor;
 
 #[derive(Debug, StructOpt)]
 /// Finds and manipluates string resources
-#[structopt(name = "aster", bin_name = "aster", no_version)]
+#[structopt(name = "art", bin_name = "art", no_version)]
 struct Opt {
     #[structopt(short)]
     java_root: PathBuf,

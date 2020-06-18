@@ -1,5 +1,5 @@
 [package]
-name = "xdel"
+name = "art"
 version = "0.1.0"
 authors = ["Brian Duff <cairndubh@gmail.com>"]
 edition = "2018"
