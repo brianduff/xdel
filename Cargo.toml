@@ -9,7 +9,6 @@ edition = "2018"
 [dependencies]
 anyhow = "*"
 xml-rs = "*"
-rayon = "*"
 multimap = "*"
 ignore = "*"
 regex = "*"
@@ -20,7 +19,6 @@ structopt = "*"
 cachedir = "*"
 bincode = "*"
 serde = { version = "*", features = ["derive"] }
-deflate = "*"
 
 [dev-dependencies]
 tempdir = "*"
