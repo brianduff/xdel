@@ -14,7 +14,7 @@ ignore = "*"
 regex = "*"
 grep = "*"
 structopt = "*"
-cachedir = "*"
+dirs = "*"
 bincode = "*"
 serde = { version = "*", features = ["derive"] }
 

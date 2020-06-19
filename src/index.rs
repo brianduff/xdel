@@ -1,5 +1,5 @@
-use anyhow::Result;
-use cachedir::CacheDirConfig;
+use anyhow::{anyhow, Result};
+use dirs;
 extern crate grep;
 use grep::matcher::Matcher;
 use grep::regex::RegexMatcher;
@@ -96,6 +96,20 @@ impl ResourceIndex {
     }
 }
 
+fn get_default_cache_dir() -> Result<PathBuf> {
+    let standard_cache_dir = dirs::cache_dir();
+
+    let cache_dir = match standard_cache_dir {
+        Some(cache_dir) => cache_dir,
+        None => match dirs::home_dir() {
+            Some(home_dir) => home_dir.join(".art"),
+            None => return Err(anyhow!("Unable to determine cache dir"))
+        }
+    };
+
+    Ok(cache_dir.join("art"))
+}
+
 impl Indexer {
     pub fn new(
         java_root: PathBuf,
@@ -105,7 +119,7 @@ impl Indexer {
     ) -> Result<Indexer> {
         let cache_dir = match cache_dir {
             Some(cache_dir) => cache_dir,
-            None => CacheDirConfig::new("aster").get_cache_dir()?.into(),
+            None => get_default_cache_dir()?,
         };
 
         // Default the manifest root to the res
